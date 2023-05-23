@@ -1,6 +1,7 @@
 package org.acme;
 
 import io.smallrye.mutiny.Uni;
+import io.vertx.mutiny.core.Vertx;
 import org.eclipse.microprofile.graphql.GraphQLApi;
 import org.eclipse.microprofile.graphql.Query;
 import org.eclipse.microprofile.graphql.Source;
@@ -11,9 +12,11 @@ import java.util.List;
 public class PeopleResource {
 
     private final PeopleService peopleService;
+    private final Vertx vertx;
 
-    public PeopleResource(PeopleService peopleService) {
+    public PeopleResource(PeopleService peopleService, Vertx vertx) {
         this.peopleService = peopleService;
+        this.vertx = vertx;
     }
 
     @Query
@@ -24,4 +27,5 @@ public class PeopleResource {
     public Uni<List<Foo>> foos(@Source Person person) {
         return peopleService.foos(person);
     }
+
 }
