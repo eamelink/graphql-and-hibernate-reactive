@@ -34,4 +34,47 @@ public class VertxContextExtras {
         });
     }
 
+    public static <R, T> Uni<T> acquireWithContextMutex(
+            Function<Function<R, Uni<T>>, Uni<T>> acquirer,
+            Function<R, Uni<T>> work) {
+
+        return Uni.createFrom().deferred(() -> {
+            Context ctx = Vertx.currentContext();
+            UniSemaphoreImpl hibernateMutex = ctx.getLocal(MUTEX_KEY);
+            if(hibernateMutex == null) {
+                if(logger.isTraceEnabled()) {
+                    logger.trace("Creating hibernate mutex in 'acquireWithContextMutex'");
+                }
+                hibernateMutex = new UniSemaphoreImpl(1);
+                ctx.putLocal(MUTEX_KEY, hibernateMutex);
+            } else {
+                if(logger.isTraceEnabled()) {
+                    logger.trace("Found existing hibernate mutex in 'acquireWithContextMutex'");
+                }
+            }
+            final UniSemaphoreImpl hibernateMutexF = hibernateMutex;
+
+            AtomicBoolean released = new AtomicBoolean(false);
+
+            return hibernateMutex.acquire().chain(() ->
+                    acquirer.apply(resource -> {
+                        if(logger.isTraceEnabled()) {
+                            logger.trace("Resource acquired, releasing permit");
+                        }
+                        released.set(true);
+                        return hibernateMutexF.release().chain(() -> work.apply(resource));
+                    }).eventually(() -> {
+                        if(!released.get()) {
+                            if(logger.isDebugEnabled()) {
+                                // Logging at debug level instead of trace; this means that resource
+                                // acquisition didn't complete succesfully, which is odd.
+                                logger.debug("Permit not released yet in eventually, releasing now");
+                            }
+                            return hibernateMutexF.release();
+                        } else {
+                            return Uni.createFrom().voidItem();
+                        }
+                    }));
+        });
+    }
 }
